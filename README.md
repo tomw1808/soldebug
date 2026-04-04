@@ -1,0 +1,218 @@
+# soldebug
+
+A modern Solidity transaction debugger for the Foundry ecosystem. Takes a transaction hash, replays it against a forked chain, and produces a detailed stack trace with decoded function calls, arguments, and revert reasons.
+
+Designed for both human developers and LLM agents debugging smart contracts.
+
+## What it does
+
+```
+$ soldebug 0xe1c962...b53fb6 --rpc-url https://sepolia.infura.io/v3/... --project-dir ./myproject
+
+Transaction 0xe1c962...b53fb6 REVERTED (gas: 29.8K)
+
+Call Stack:
+  TestToken.mint(arg0=0xdEadDEAD..., arg1=900000000000000000000000) <- REVERT
+      REVERT: MaxSupplyExceeded(900000000000000000000000, 500000000000000000000000)
+
+Revert Reason: MaxSupplyExceeded(900000000000000000000000, 500000000000000000000000)
+```
+
+It replays the exact transaction execution using [revm](https://github.com/bluealloy/revm), decodes every call using the contract ABIs, identifies contracts by name, and renders a Tenderly-style call tree.
+
+## Features
+
+- **Transaction replay** - forks chain state at the parent block, replays preceding transactions, then executes the target tx with full tracing
+- **Contract identification** - matches deployed bytecode to local compilation artifacts
+- **ABI decoding** - decodes function calls, arguments, return values, events, and custom errors
+- **Custom error decoding** - recognizes Solidity custom errors like `MaxSupplyExceeded(uint256, uint256)`
+- **Multiple output formats** - human-readable trace (default), JSON for machine consumption
+- **Local source resolution** - automatically detects and compiles Foundry projects
+- **Works against any EVM chain** - tested on local Anvil and Sepolia testnet
+
+## Installation
+
+### Prerequisites
+
+- Rust nightly toolchain (1.93+) - the project includes a `rust-toolchain.toml` that handles this automatically
+- [Foundry](https://getfoundry.sh) installed (for `solc` management)
+
+### Build from source
+
+```bash
+git clone --recursive <repo-url>
+cd soldebug
+cargo build --release
+```
+
+The `--recursive` flag is important - it fetches the Foundry submodule in `lib/foundry/`.
+
+The binary will be at `target/release/soldebug`.
+
+## Usage
+
+```
+soldebug <TX_HASH> [OPTIONS]
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-r, --rpc-url <URL>` | RPC endpoint (default: `ETH_RPC_URL` env var, or `http://localhost:8545`) |
+| `-p, --project-dir <PATH>` | Foundry project directory for local source resolution |
+| `-o, --output <FORMAT>` | Output format: `trace` (default), `json`, `interactive` |
+| `-q, --quick` | Skip replaying preceding txs in the block (faster, less accurate) |
+| `--etherscan-key <KEY>` | Etherscan API key for source fetching (future) |
+| `--chain <CHAIN>` | Chain identifier (future) |
+| `-v, --verbose` | Verbose output |
+
+### Examples
+
+**Debug a reverting transaction against a local Anvil node:**
+
+```bash
+soldebug 0xabc123... --rpc-url http://localhost:8545 --project-dir ./my-foundry-project
+```
+
+**Debug a Sepolia transaction with JSON output (for LLM consumption):**
+
+```bash
+soldebug 0xabc123... --rpc-url https://sepolia.infura.io/v3/YOUR_KEY --project-dir ./my-project --output json
+```
+
+**Quick mode (skip preceding tx replay, faster but may differ from live execution):**
+
+```bash
+soldebug 0xabc123... --rpc-url http://localhost:8545 -q
+```
+
+### Output formats
+
+**`--output trace`** (default) - human-readable call tree, optimized for terminal and LLM readability:
+
+```
+Transaction 0x8e323a...e90132 SUCCESS (gas: 51.9K)
+
+Call Stack:
+  TestToken.transfer(arg0=0x000...dEaD, arg1=1000000000000000000000)
+```
+
+**`--output json`** - structured JSON with all decoded data:
+
+```json
+{
+  "tx_hash": "0xe1c962...",
+  "success": false,
+  "gas_used": 29834,
+  "revert_reason": "MaxSupplyExceeded(900000000000000000000000, 500000000000000000000000)",
+  "call_stack": [
+    {
+      "address": "0xda8f3b...",
+      "contract_name": "TestToken",
+      "function_name": "mint",
+      "kind": "Call",
+      "success": false,
+      "children": []
+    }
+  ]
+}
+```
+
+## Architecture
+
+```
+soldebug/
+  lib/foundry/                 # Foundry as git submodule
+  crates/
+    soldebug/                  # CLI binary (clap argument parsing)
+      src/main.rs              # Entry point, orchestrates the pipeline
+      src/cli.rs               # CLI argument definitions
+    soldebug-core/             # Core library
+      src/replay.rs            # Transaction replay engine (TracingExecutor + revm)
+      src/source.rs            # Source resolution (compile local Foundry projects)
+      src/decode.rs            # Trace decoding (CallTraceDecoder, StackFrame building)
+      src/types.rs             # Data types (DebugSession, StackFrame, SourceLoc)
+    soldebug-output/           # Output formatting
+      src/trace_fmt.rs         # Human-readable Tenderly-style call tree
+      src/json_fmt.rs          # JSON serialization
+```
+
+### How it works
+
+1. **Source resolution** - if `--project-dir` points to a Foundry project (or CWD has `foundry.toml`), compile it and extract ABIs + source maps
+2. **Transaction replay** - fetch the transaction from the RPC, fork chain state at the parent block, replay all preceding transactions in the block, then execute the target transaction with `TracingInspector` enabled
+3. **Trace decoding** - identify contract addresses by matching deployed bytecode against known artifacts, decode function calls/errors/events using the ABIs
+4. **Output** - render the decoded call tree in the requested format
+
+### Dependency strategy
+
+soldebug depends on Foundry's internal crates as path dependencies via a git submodule (`lib/foundry/`). This gives us access to battle-tested infrastructure:
+
+- **`foundry-evm`** - `TracingExecutor`, `Executor`, inspector stack
+- **`foundry-evm-traces`** - `CallTraceDecoder`, `CallTraceArena`, `ContractSources`, trace identification
+- **`foundry-evm-core`** - `Backend`, fork DB, EVM configuration
+- **`foundry-config`** - `Config` for reading `foundry.toml`
+- **`foundry-compilers`** - Solidity compiler integration, artifact parsing
+
+The workspace's `[patch.crates-io]` section replicates Foundry's dependency pins (alloy, revm, solar, etc.) to ensure version compatibility.
+
+## Roadmap
+
+### Phase 1: Stack trace output (current)
+
+- [x] CLI with tx hash input and RPC URL
+- [x] Transaction replay via `TracingExecutor`
+- [x] Local Foundry project source resolution
+- [x] Contract identification and ABI decoding
+- [x] Human-readable trace output
+- [x] JSON output for LLM consumption
+- [x] Custom error decoding (e.g., `MaxSupplyExceeded`)
+- [x] Tested against Anvil and Sepolia
+
+### Phase 2: Etherscan + source mapping
+
+- [ ] Etherscan/Sourcify source fetching (when no local project)
+- [ ] Source location mapping (file:line:column in trace output)
+- [ ] Proxy contract handling (DELEGATECALL source resolution)
+- [ ] Graceful degradation for unverified contracts
+
+### Phase 3: Interactive TUI debugger
+
+- [ ] Step-through TUI using ratatui (like Foundry's `forge test --debug` but for any tx)
+- [ ] Source-level stepping (next line, step into, step out)
+- [ ] Variable watch panel
+- [ ] Breakpoints by source location
+
+### Phase 4: Web UI
+
+- [ ] Axum server with embedded web interface
+- [ ] WebSocket API for real-time stepping
+- [ ] Visual source code panel with execution highlighting
+
+### Phase 5: Enhanced variable decoding
+
+- [ ] Full local/state variable decoding at any execution step
+- [ ] Struct, mapping, and dynamic array inspection
+
+## Development
+
+```bash
+# Build
+cargo build
+
+# Build release
+cargo build --release
+
+# Run
+cargo run --bin soldebug -- 0xTX_HASH --rpc-url http://localhost:8545
+
+# Check (fast, no codegen)
+cargo check
+```
+
+The first build takes ~60s due to the large dependency tree (revm, alloy, solc). Incremental rebuilds are fast (~7s).
+
+## License
+
+MIT OR Apache-2.0
