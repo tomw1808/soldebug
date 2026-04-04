@@ -32,6 +32,8 @@ pub struct ReplayResult {
     pub gas_used: u64,
     /// Bytecodes at addresses involved in the trace.
     pub contracts_bytecode: HashMap<Address, Bytes>,
+    /// Detected chain.
+    pub chain: foundry_config::Chain,
 }
 
 /// Replay a transaction and collect traces.
@@ -76,7 +78,7 @@ pub async fn replay_transaction(
     evm_opts.memory_limit = 1 << 32;
 
     // Get fork material (env, tx_env, fork, chain, networks)
-    let (mut evm_env, tx_env, fork, _chain, networks) =
+    let (mut evm_env, tx_env, fork, chain, networks) =
         TracingExecutor::<EthEvmNetwork>::get_fork_material(&mut config, evm_opts.clone()).await?;
 
     // Detect EVM version from block
@@ -221,5 +223,6 @@ pub async fn replay_transaction(
         traces,
         gas_used: raw_result.gas_used,
         contracts_bytecode,
+        chain,
     })
 }

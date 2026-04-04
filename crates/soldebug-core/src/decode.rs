@@ -20,7 +20,8 @@ pub async fn decode_traces(
     mut traces: Traces,
     contracts_bytecode: &HashMap<Address, Bytes>,
     sources: Option<ResolvedSources>,
-    _config: &foundry_config::Config,
+    config: &foundry_config::Config,
+    chain: foundry_config::Chain,
 ) -> Result<DebugSession> {
     let (known_contracts, contract_sources) = match sources {
         Some(resolved) => (Some(resolved.known_contracts), resolved.contract_sources),
@@ -36,9 +37,12 @@ pub async fn decode_traces(
         identifier = identifier.with_local_and_bytecodes(contracts, contracts_bytecode);
     }
 
+    // Phase 0: Add Etherscan/Sourcify external identifier if configured
+    identifier = identifier.with_external(config, Some(chain))?;
+
     let mut decoder = builder.build();
 
-    // Phase 1: Bytecode-based identification (exact or near-exact match)
+    // Phase 1: Bytecode-based identification + external (Etherscan/Sourcify)
     for (_, trace) in traces.iter_mut() {
         decoder.identify(trace, &mut identifier);
     }

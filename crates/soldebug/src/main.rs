@@ -60,7 +60,13 @@ async fn run(cli: Cli) -> Result<()> {
 
     // Step 3: Decode traces into structured data
     eprintln!("Decoding traces...");
-    let config = foundry_config::Config::load().unwrap_or_default().sanitized();
+    let mut config = foundry_config::Config::load().unwrap_or_default().sanitized();
+
+    // Set Etherscan API key if provided
+    if let Some(ref key) = cli.etherscan_key {
+        config.etherscan_api_key = Some(key.clone());
+    }
+
     let session = soldebug_core::decode::decode_traces(
         tx_hash,
         replay.success,
@@ -69,6 +75,7 @@ async fn run(cli: Cli) -> Result<()> {
         &replay.contracts_bytecode,
         sources,
         &config,
+        replay.chain,
     )
     .await?;
 
