@@ -1,0 +1,27 @@
+[package]
+name = "soldebug"
+description = "Modern Solidity transaction debugger"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "soldebug"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+soldebug-core = { path = "../soldebug-core" }
+soldebug-output = { path = "../soldebug-output" }
+foundry-config.workspace = true
+
+alloy-primitives.workspace = true
+clap = { workspace = true, features = ["derive", "env"] }
+eyre.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+yansi.workspace = true
