@@ -4,6 +4,7 @@ use crate::source::ResolvedSources;
 use crate::types::{DebugSession, FrameKind, StackFrame};
 use alloy_primitives::{Address, B256, Bytes, map::HashMap};
 use eyre::Result;
+use foundry_common::ContractsByArtifact;
 use foundry_evm_traces::{
     CallTraceDecoderBuilder, CallTraceNode, DebugTraceIdentifier, Traces,
     debug::ContractSources,
@@ -37,9 +38,39 @@ pub async fn decode_traces(
 
     let mut decoder = builder.build();
 
-    // Identify addresses in traces
+    // Phase 1: Bytecode-based identification (exact or near-exact match)
     for (_, trace) in traces.iter_mut() {
         decoder.identify(trace, &mut identifier);
+    }
+
+    // Phase 2: ABI selector-based fallback for unidentified addresses
+    // This handles proxies and contracts compiled with different settings
+    if let Some(ref contracts) = known_contracts {
+        let unidentified_count = identify_by_abi_selectors(&mut decoder, &traces, contracts);
+        if unidentified_count > 0 {
+            eprintln!("  ABI selector matching identified {unidentified_count} additional contracts");
+        }
+    }
+
+    // Log final identification results
+    let identified_count = decoder.contracts.len();
+    let total_addresses: std::collections::HashSet<_> = traces
+        .iter()
+        .flat_map(|(_, t)| t.arena.nodes().iter().map(|n| n.trace.address))
+        .filter(|a| !a.is_zero())
+        .collect();
+    let unidentified: Vec<_> = total_addresses
+        .iter()
+        .filter(|a| !decoder.contracts.contains_key(*a))
+        .collect();
+    if !unidentified.is_empty() {
+        eprintln!(
+            "  Identified {identified_count}/{} unique addresses ({} unidentified)",
+            total_addresses.len(),
+            unidentified.len()
+        );
+    } else {
+        eprintln!("  All {identified_count} addresses identified.");
     }
 
     // Set up debug identifier for internal function tracing
@@ -74,6 +105,130 @@ pub async fn decode_traces(
         call_stack,
         traces: Some(traces),
     })
+}
+
+/// Fallback identification: match unidentified addresses by comparing the function
+/// selectors in their calldata against known contract ABIs.
+///
+/// This handles UUPS/transparent proxies where the bytecode at the proxy address
+/// doesn't match any local artifact, but the delegate call target's function
+/// signatures do match a known contract.
+fn identify_by_abi_selectors(
+    decoder: &mut foundry_evm_traces::CallTraceDecoder,
+    traces: &Traces,
+    known_contracts: &ContractsByArtifact,
+) -> usize {
+    use alloy_json_abi::JsonAbi;
+    use alloy_primitives::FixedBytes;
+
+    // Build a map: 4-byte selector -> Vec<(contract_name, abi)>
+    let mut selector_to_contracts: HashMap<FixedBytes<4>, Vec<(String, &JsonAbi)>> =
+        HashMap::default();
+    for (id, contract) in known_contracts.iter() {
+        for func in contract.abi.functions() {
+            selector_to_contracts
+                .entry(func.selector())
+                .or_default()
+                .push((id.name.clone(), &contract.abi));
+        }
+    }
+
+    let mut newly_identified = 0;
+
+    for (_, trace) in traces.iter() {
+        for node in trace.arena.nodes() {
+            let addr = node.trace.address;
+
+            // Skip already-identified and zero addresses
+            if addr.is_zero() || decoder.contracts.contains_key(&addr) {
+                continue;
+            }
+
+            // Skip if calldata is too short for a selector
+            if node.trace.data.len() < 4 {
+                continue;
+            }
+
+            // Extract 4-byte selector from calldata
+            let selector: FixedBytes<4> = node.trace.data[..4].try_into().unwrap();
+
+            // Find matching contracts
+            if let Some(matches) = selector_to_contracts.get(&selector) {
+                // Pick the best match: prefer contracts with the most matching selectors
+                // across all calls to this address in the trace
+                let best = find_best_abi_match(addr, traces, &selector_to_contracts, matches);
+
+                if let Some((name, abi)) = best {
+                    // Register with the decoder
+                    decoder
+                        .contracts
+                        .insert(addr, format!("{name}"));
+                    decoder.labels.insert(addr, name.clone());
+
+                    // Register all functions and events from this ABI
+                    for func in abi.functions() {
+                        decoder.push_function(func.clone());
+                    }
+                    for event in abi.events() {
+                        decoder.push_event(event.clone());
+                    }
+                    for error in abi.errors() {
+                        decoder.revert_decoder.push_error(error.clone());
+                    }
+
+                    newly_identified += 1;
+                }
+            }
+        }
+    }
+
+    newly_identified
+}
+
+/// Given an address and candidate contract matches, find the best match by counting
+/// how many distinct selectors used at this address exist in each candidate ABI.
+fn find_best_abi_match<'a>(
+    addr: Address,
+    traces: &Traces,
+    _selector_to_contracts: &HashMap<alloy_primitives::FixedBytes<4>, Vec<(String, &'a alloy_json_abi::JsonAbi)>>,
+    candidates: &[(String, &'a alloy_json_abi::JsonAbi)],
+) -> Option<(String, &'a alloy_json_abi::JsonAbi)> {
+    if candidates.len() == 1 {
+        let (name, abi) = &candidates[0];
+        return Some((name.clone(), *abi));
+    }
+
+    // Collect all selectors used at this address
+    let mut selectors_at_addr: std::collections::HashSet<alloy_primitives::FixedBytes<4>> =
+        std::collections::HashSet::new();
+    for (_, trace) in traces {
+        for node in trace.arena.nodes() {
+            if node.trace.address == addr && node.trace.data.len() >= 4 {
+                let sel: alloy_primitives::FixedBytes<4> =
+                    node.trace.data[..4].try_into().unwrap();
+                selectors_at_addr.insert(sel);
+            }
+        }
+    }
+
+    // Score each candidate by how many selectors it covers
+    let mut best_score = 0usize;
+    let mut best: Option<(String, &alloy_json_abi::JsonAbi)> = None;
+
+    for (name, abi) in candidates {
+        let abi_selectors: std::collections::HashSet<_> =
+            abi.functions().map(|f| f.selector()).collect();
+        let score = selectors_at_addr
+            .iter()
+            .filter(|s| abi_selectors.contains(*s))
+            .count();
+        if score > best_score {
+            best_score = score;
+            best = Some((name.clone(), *abi));
+        }
+    }
+
+    best
 }
 
 /// Walk the `CallTraceArena` and build a tree of `StackFrame`s.

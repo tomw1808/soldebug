@@ -127,14 +127,31 @@ pub async fn replay_transaction(
                 eyre::bail!("Block transactions not available in full format");
             };
 
-            info!(
-                count = txs.len(),
-                "Replaying preceding transactions in block"
-            );
+            // Find position of our tx in the block
+            let tx_position = txs
+                .iter()
+                .position(|t| t.tx_hash() == tx_hash)
+                .unwrap_or(txs.len());
 
-            for tx_in_block in txs.iter() {
+            if tx_position > 0 {
+                eprintln!(
+                    "  Replaying {tx_position} preceding transactions in block {} (fetching state from RPC)...",
+                    evm_env.block_env.number
+                );
+                if tx_position > 50 {
+                    eprintln!(
+                        "  Hint: use --quick to skip this step (faster, but may produce slightly different results)"
+                    );
+                }
+            }
+
+            for (idx, tx_in_block) in txs.iter().enumerate() {
                 if tx_in_block.tx_hash() == tx_hash {
                     break;
+                }
+
+                if tx_position > 10 && (idx + 1) % 10 == 0 {
+                    eprintln!("  [{}/{}] replaying...", idx + 1, tx_position);
                 }
 
                 let tx_env = tx_in_block
