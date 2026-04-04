@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# soldebugup - installer for soldebug
+#
+# Usage:
+#   curl -L https://raw.githubusercontent.com/USER/soldebug/main/soldebugup/install | bash
+#
+# Environment variables:
+#   SOLDEBUG_VERSION  - specific version to install (e.g., v0.1.0). Default: latest
+#   SOLDEBUG_DIR      - installation directory. Default: ~/.soldebug
+
+REPO="USER/soldebug"  # TODO: replace with actual GitHub repo
+
+main() {
+    need_cmd curl
+    need_cmd tar
+    need_cmd uname
+
+    local version="${SOLDEBUG_VERSION:-latest}"
+    local install_dir="${SOLDEBUG_DIR:-$HOME/.soldebug}"
+    local bin_dir="$install_dir/bin"
+
+    # Detect platform
+    local os arch target
+    os=$(uname -s)
+    arch=$(uname -m)
+
+    case "$os" in
+        Linux)  os="unknown-linux-gnu" ;;
+        Darwin) os="apple-darwin" ;;
+        *)      err "Unsupported OS: $os" ;;
+    esac
+
+    case "$arch" in
+        x86_64|amd64)  arch="x86_64" ;;
+        arm64|aarch64) arch="aarch64" ;;
+        *)             err "Unsupported architecture: $arch" ;;
+    esac
+
+    target="${arch}-${os}"
+
+    # Resolve version
+    if [ "$version" = "latest" ]; then
+        say "Fetching latest release..."
+        version=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+            | grep '"tag_name"' | head -1 | cut -d '"' -f 4)
+        if [ -z "$version" ]; then
+            err "Could not determine latest version. Set SOLDEBUG_VERSION explicitly."
+        fi
+    fi
+
+    say "Installing soldebug ${version} (${target})..."
+
+    # Download
+    local url="https://github.com/${REPO}/releases/download/${version}/soldebug-${version}-${target}.tar.gz"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    trap 'rm -rf "$tmp_dir"' EXIT
+
+    say "Downloading from ${url}..."
+    curl -fSL "$url" -o "$tmp_dir/soldebug.tar.gz" || err "Download failed. Check that version ${version} exists for ${target}."
+
+    # Extract
+    tar xzf "$tmp_dir/soldebug.tar.gz" -C "$tmp_dir"
+
+    # Install
+    mkdir -p "$bin_dir"
+    mv "$tmp_dir/soldebug" "$bin_dir/soldebug"
+    chmod +x "$bin_dir/soldebug"
+
+    say ""
+    say "soldebug ${version} installed to ${bin_dir}/soldebug"
+    say ""
+
+    # Check PATH
+    case ":$PATH:" in
+        *":$bin_dir:"*) ;;
+        *)
+            say "Add soldebug to your PATH by adding this to your shell profile:"
+            say ""
+            say "  export PATH=\"${bin_dir}:\$PATH\""
+            say ""
+            # Try to detect shell and suggest the right file
+            local shell_profile=""
+            case "${SHELL:-}" in
+                */zsh)  shell_profile="~/.zshenv" ;;
+                */bash) shell_profile="~/.bashrc" ;;
+                */fish) shell_profile="~/.config/fish/config.fish" ;;
+            esac
+            if [ -n "$shell_profile" ]; then
+                say "For your shell, add it to ${shell_profile}:"
+                say ""
+                say "  echo 'export PATH=\"${bin_dir}:\$PATH\"' >> ${shell_profile}"
+                say ""
+            fi
+            ;;
+    esac
+
+    say "Run 'soldebug --help' to get started."
+}
+
+say() {
+    printf "soldebugup: %s\n" "$1"
+}
+
+err() {
+    say "error: $1" >&2
+    exit 1
+}
+
+need_cmd() {
+    if ! command -v "$1" &>/dev/null; then
+        err "need '$1' (command not found)"
+    fi
+}
+
+main "$@"

@@ -32,12 +32,42 @@ It replays the exact transaction execution using [revm](https://github.com/bluea
 
 ## Installation
 
-### Prerequisites
+### Quick install (recommended)
 
-- Rust nightly toolchain (1.93+) - the project includes a `rust-toolchain.toml` that handles this automatically
-- [Foundry](https://getfoundry.sh) installed (for `solc` management)
+```bash
+curl -L https://raw.githubusercontent.com/USER/soldebug/main/soldebugup/install | bash
+```
+
+This downloads the latest prebuilt binary for your platform and installs it to `~/.soldebug/bin/`. Supports macOS (Apple Silicon & Intel) and Linux (x86_64 & ARM64).
+
+To install a specific version:
+
+```bash
+SOLDEBUG_VERSION=v0.1.0 curl -L https://raw.githubusercontent.com/USER/soldebug/main/soldebugup/install | bash
+```
+
+> **Note:** Replace `USER` with the actual GitHub username/org once the repo is published.
+
+### Download binary manually
+
+Grab a prebuilt binary from the [Releases](https://github.com/USER/soldebug/releases) page:
+
+| Platform | Archive |
+|----------|---------|
+| macOS (Apple Silicon) | `soldebug-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
+| macOS (Intel) | `soldebug-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
+| Linux (x86_64) | `soldebug-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux (ARM64) | `soldebug-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
+
+```bash
+# Example: macOS Apple Silicon
+tar xzf soldebug-v0.1.0-aarch64-apple-darwin.tar.gz
+sudo mv soldebug /usr/local/bin/
+```
 
 ### Build from source
+
+Requires Rust nightly (1.93+) and [Foundry](https://getfoundry.sh) installed for `solc` management.
 
 ```bash
 git clone --recursive <repo-url>
