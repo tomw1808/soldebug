@@ -11,6 +11,9 @@ version = "1.6.0"
 edition = "2024"
 rust-version = "1.89"
 authors = ["Foundry Contributors"]
+# NOTE: The workspace.package fields below use Foundry's values because
+# Foundry path-dependency crates inherit from workspace.package.
+# soldebug's own crates override these in their individual Cargo.toml files.
 license = "MIT OR Apache-2.0"
 homepage = "https://getfoundry.sh"
 repository = "https://github.com/foundry-rs/foundry"

@@ -243,6 +243,16 @@ cargo check
 
 The first build takes ~60s due to the large dependency tree (revm, alloy, solc). Incremental rebuilds are fast (~7s).
 
+## Contributing
+
+Contributions are welcome! By opening a pull request, you agree to the [Contributor License Agreement](CLA.md).
+
 ## License
 
-MIT OR Apache-2.0
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-or-later).
+
+This means you can freely use, modify, and distribute this software, but if you distribute modified versions or run them as a network service, you must make your source code available under the same license.
+
+### Third-party licenses
+
+soldebug depends on [Foundry](https://github.com/foundry-rs/foundry) (MIT/Apache-2.0), [revm](https://github.com/bluealloy/revm) (MIT), [alloy](https://github.com/alloy-rs/alloy) (MIT/Apache-2.0), and other open source libraries. See [NOTICE](NOTICE) for full attribution.

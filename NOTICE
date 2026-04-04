@@ -1,0 +1,54 @@
+soldebug
+Copyright 2026 soldebug contributors
+
+This project includes code from the following third-party projects:
+
+================================================================================
+
+Foundry (https://github.com/foundry-rs/foundry)
+
+Copyright (c) 2021-2026 Contributors to Foundry
+
+Licensed under either of:
+  - Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+  - MIT License (http://opensource.org/licenses/MIT)
+
+at your option.
+
+soldebug uses Foundry's internal crates as dependencies (via git submodule at
+lib/foundry/) for EVM execution, trace collection, source mapping, contract
+identification, and Solidity compilation. These crates include but are not
+limited to: foundry-evm, foundry-evm-core, foundry-evm-traces, foundry-config,
+foundry-common, and foundry-compilers.
+
+================================================================================
+
+revm (https://github.com/bluealloy/revm)
+
+Copyright (c) 2021-2026 draganrakita
+
+Licensed under the MIT License.
+
+================================================================================
+
+revm-inspectors (https://github.com/paradigmxyz/revm-inspectors)
+
+Copyright (c) 2023-2026 Paradigm
+
+Licensed under either of:
+  - Apache License, Version 2.0
+  - MIT License
+
+at your option.
+
+================================================================================
+
+alloy (https://github.com/alloy-rs/alloy)
+
+Copyright (c) 2023-2026 Alloy Contributors
+
+Licensed under either of:
+  - Apache License, Version 2.0
+  - MIT License
+
+at your option.
