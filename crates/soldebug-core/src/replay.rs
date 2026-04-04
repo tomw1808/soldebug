@@ -66,6 +66,7 @@ pub async fn replay_transaction(
 
     // Configure fork at parent block
     let mut config = Config::default();
+    config.eth_rpc_url = Some(rpc_url.to_string());
     config.fork_block_number = Some(tx_block_number - 1);
 
     let mut evm_opts = EvmOpts::default();
