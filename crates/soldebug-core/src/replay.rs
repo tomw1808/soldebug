@@ -71,6 +71,8 @@ pub async fn replay_transaction(
     let mut evm_opts = EvmOpts::default();
     evm_opts.fork_url = Some(rpc_url.to_string());
     evm_opts.fork_block_number = Some(tx_block_number - 1);
+    // Set a generous memory limit (2^32 bytes = 4GB) to avoid MemoryLimitOOG
+    evm_opts.memory_limit = 1 << 32;
 
     // Get fork material (env, tx_env, fork, chain, networks)
     let (mut evm_env, tx_env, fork, _chain, networks) =
