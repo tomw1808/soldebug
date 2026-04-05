@@ -6,8 +6,10 @@ Designed for both human developers and LLM agents debugging smart contracts.
 
 ## What it does
 
+**Simple reverting transaction:**
+
 ```
-$ soldebug 0xe1c962...b53fb6 --rpc-url https://sepolia.infura.io/v3/... --project-dir ./myproject
+$ soldebug 0xe1c962... --rpc-url https://sepolia.infura.io/v3/... --project-dir ./myproject
 
 Transaction 0xe1c962...b53fb6 REVERTED (gas: 29.8K)
 
@@ -18,17 +20,54 @@ Call Stack:
 Revert Reason: MaxSupplyExceeded(900000000000000000000000, 500000000000000000000000)
 ```
 
-It replays the exact transaction execution using [revm](https://github.com/bluealloy/revm), decodes every call using the contract ABIs, identifies contracts by name, and renders a Tenderly-style call tree.
+**Complex UUPS proxy transaction with external contracts:**
+
+```
+$ soldebug 0x442eaa... --rpc-url https://sepolia.infura.io/v3/... \
+    --project-dir ./universal-private-dollar --etherscan-key YOUR_KEY --quick
+
+Transaction 0x442eaa...78a20a REVERTED (gas: 421.0K)
+
+Call Stack:
+  ERC1967Proxy.fallback(...)
+  +-- [delegatecall] IStabilizerNFT.mintUPD(addr, PriceAttestationQuery{...})
+    +-- [staticcall] ERC20.balanceOf(ERC1967Proxy: [0xFa98...])
+      +-- [delegatecall] Lido.balanceOf(ERC1967Proxy: [0xFa98...])
+    +-- ERC20.submit(0x000...)
+      +-- [delegatecall] Lido.submit(0x000...)
+    +-- ERC1967Proxy.fallback(PriceAttestationQuery{...})
+      +-- [delegatecall] PriceOracle.attestationService(...)
+        +-- [staticcall] PRECOMPILES.ecrecover(...)
+    +-- [delegatecall] 0xbce1...4262.???() <- REVERT
+          REVERT: call to non-contract address 0x000...000
+      +-- IStabilizerEscrow.unallocatedStETH()
+        +-- [delegatecall] StabilizerEscrow.unallocatedStETH()
+      +-- [delegatecall] CollateralMathLib.stabilizerStEthNeeded(...)
+      +-- [delegatecall] CollateralMathLib.ethToUPD(...)
+      +-- StabilizerEscrow.withdrawForAllocation(...)
+        +-- [delegatecall] Lido.transfer(...)
+      +-- PositionEscrow.addCollateralFromStabilizer(...)
+      +-- UPDToken.mint(...)
+
+Revert Reason: call to non-contract address 0x000...000
+```
+
+soldebug replays the exact transaction execution using [revm](https://github.com/bluealloy/revm), decodes every call using contract ABIs, identifies contracts by name (including through proxies), and renders a Tenderly-style call tree.
 
 ## Features
 
-- **Transaction replay** - forks chain state at the parent block, replays preceding transactions, then executes the target tx with full tracing
-- **Contract identification** - matches deployed bytecode to local compilation artifacts
+- **Transaction replay** - forks chain state at the parent block, replays preceding transactions, then executes the target tx with full tracing (with progress reporting)
+- **Three-tier contract identification:**
+  - **Bytecode matching** - matches deployed bytecode against local compilation artifacts
+  - **ABI selector matching** - identifies proxy implementation contracts by matching function selectors against known ABIs (handles UUPS, transparent proxies, etc.)
+  - **Etherscan/Sourcify fetching** - fetches verified sources for external contracts (e.g., Lido, OpenZeppelin) when an API key is provided
 - **ABI decoding** - decodes function calls, arguments, return values, events, and custom errors
-- **Custom error decoding** - recognizes Solidity custom errors like `MaxSupplyExceeded(uint256, uint256)`
-- **Multiple output formats** - human-readable trace (default), JSON for machine consumption
-- **Local source resolution** - automatically detects and compiles Foundry projects
+- **Custom error decoding** - recognizes Solidity custom errors like `MaxSupplyExceeded(uint256, uint256)` and OpenZeppelin errors like `OwnableUnauthorizedAccount(address)`
+- **Proxy support** - resolves UUPS and transparent proxy patterns, showing both the proxy entry point and the implementation contract
+- **Multiple output formats** - human-readable trace (default), JSON for machine/LLM consumption
+- **Local source resolution** - automatically detects and compiles Foundry projects, including reading cached artifacts from `out/`
 - **Works against any EVM chain** - tested on local Anvil and Sepolia testnet
+- **Quick mode** - skip preceding transaction replay for faster results (`--quick`)
 
 ## Installation
 
@@ -93,28 +132,37 @@ soldebug <TX_HASH> [OPTIONS]
 | `-p, --project-dir <PATH>` | Foundry project directory for local source resolution |
 | `-o, --output <FORMAT>` | Output format: `trace` (default), `json`, `interactive` |
 | `-q, --quick` | Skip replaying preceding txs in the block (faster, less accurate) |
-| `--etherscan-key <KEY>` | Etherscan API key for source fetching (future) |
-| `--chain <CHAIN>` | Chain identifier (future) |
+| `--etherscan-key <KEY>` | Etherscan API key for fetching external contract sources (env: `ETHERSCAN_API_KEY`) |
+| `--chain <CHAIN>` | Chain identifier (auto-detected from RPC) |
 | `-v, --verbose` | Verbose output |
 
 ### Examples
 
-**Debug a reverting transaction against a local Anvil node:**
+**Debug a reverting transaction with local sources:**
 
 ```bash
 soldebug 0xabc123... --rpc-url http://localhost:8545 --project-dir ./my-foundry-project
 ```
 
-**Debug a Sepolia transaction with JSON output (for LLM consumption):**
+**Debug against a testnet with Etherscan for external contract resolution:**
 
 ```bash
-soldebug 0xabc123... --rpc-url https://sepolia.infura.io/v3/YOUR_KEY --project-dir ./my-project --output json
+soldebug 0xabc123... \
+  --rpc-url https://sepolia.infura.io/v3/YOUR_KEY \
+  --project-dir ./my-project \
+  --etherscan-key YOUR_ETHERSCAN_KEY
 ```
 
-**Quick mode (skip preceding tx replay, faster but may differ from live execution):**
+**Quick mode (skip preceding tx replay, much faster for busy blocks):**
 
 ```bash
-soldebug 0xabc123... --rpc-url http://localhost:8545 -q
+soldebug 0xabc123... --rpc-url http://localhost:8545 --project-dir ./my-project -q
+```
+
+**JSON output for LLM agent consumption:**
+
+```bash
+soldebug 0xabc123... --rpc-url http://localhost:8545 --project-dir ./my-project --output json
 ```
 
 ### Output formats
@@ -149,6 +197,12 @@ Call Stack:
 }
 ```
 
+### How --quick works
+
+By default, soldebug replays all transactions in the block preceding your target transaction to reconstruct the exact state. On remote RPCs, each state access is an HTTP round-trip, so a block with 176 transactions can take minutes.
+
+With `--quick`, it forks state at the parent block and executes only your transaction. This is accurate for most cases - it only matters when a preceding transaction in the same block modifies state your transaction depends on.
+
 ## Architecture
 
 ```
@@ -160,8 +214,8 @@ soldebug/
       src/cli.rs               # CLI argument definitions
     soldebug-core/             # Core library
       src/replay.rs            # Transaction replay engine (TracingExecutor + revm)
-      src/source.rs            # Source resolution (compile local Foundry projects)
-      src/decode.rs            # Trace decoding (CallTraceDecoder, StackFrame building)
+      src/source.rs            # Source resolution (compile + cached artifact reading)
+      src/decode.rs            # Trace decoding (three-tier identification + StackFrame building)
       src/types.rs             # Data types (DebugSession, StackFrame, SourceLoc)
     soldebug-output/           # Output formatting
       src/trace_fmt.rs         # Human-readable Tenderly-style call tree
@@ -170,17 +224,21 @@ soldebug/
 
 ### How it works
 
-1. **Source resolution** - if `--project-dir` points to a Foundry project (or CWD has `foundry.toml`), compile it and extract ABIs + source maps
-2. **Transaction replay** - fetch the transaction from the RPC, fork chain state at the parent block, replay all preceding transactions in the block, then execute the target transaction with `TracingInspector` enabled
-3. **Trace decoding** - identify contract addresses by matching deployed bytecode against known artifacts, decode function calls/errors/events using the ABIs
-4. **Output** - render the decoded call tree in the requested format
+1. **Source resolution** - if `--project-dir` points to a Foundry project (or CWD has `foundry.toml`), compile it and extract ABIs + source maps. Reads cached artifacts from `out/` when the compiler reports nothing to recompile.
+2. **Transaction replay** - fetch the transaction from the RPC, fork chain state at the parent block, optionally replay all preceding transactions in the block, then execute the target transaction with `TracingInspector` enabled.
+3. **Three-tier contract identification:**
+   - **Tier 1: Bytecode matching** - compare deployed bytecodes against local compilation artifacts (exact and near-exact matching with diff scoring)
+   - **Tier 2: ABI selector matching** - for unidentified addresses, match the 4-byte function selectors in calldata against all known contract ABIs. This catches proxy implementations where bytecodes differ due to immutables/constructor args.
+   - **Tier 3: Etherscan/Sourcify** - fetch verified source metadata from Etherscan and Sourcify for external contracts not in the local project (e.g., Lido, Uniswap). Rate-limited with automatic backoff.
+4. **Trace decoding** - decode function calls, arguments, return values, events, and custom errors using the identified ABIs.
+5. **Output** - render the decoded call tree in the requested format.
 
 ### Dependency strategy
 
 soldebug depends on Foundry's internal crates as path dependencies via a git submodule (`lib/foundry/`). This gives us access to battle-tested infrastructure:
 
 - **`foundry-evm`** - `TracingExecutor`, `Executor`, inspector stack
-- **`foundry-evm-traces`** - `CallTraceDecoder`, `CallTraceArena`, `ContractSources`, trace identification
+- **`foundry-evm-traces`** - `CallTraceDecoder`, `CallTraceArena`, `ContractSources`, `ExternalIdentifier`, trace identification
 - **`foundry-evm-core`** - `Backend`, fork DB, EVM configuration
 - **`foundry-config`** - `Config` for reading `foundry.toml`
 - **`foundry-compilers`** - Solidity compiler integration, artifact parsing
@@ -189,23 +247,27 @@ The workspace's `[patch.crates-io]` section replicates Foundry's dependency pins
 
 ## Roadmap
 
-### Phase 1: Stack trace output (current)
+### Phase 1: Stack trace output
 
 - [x] CLI with tx hash input and RPC URL
 - [x] Transaction replay via `TracingExecutor`
-- [x] Local Foundry project source resolution
-- [x] Contract identification and ABI decoding
+- [x] Local Foundry project source resolution (including cached artifacts)
+- [x] Contract identification (bytecode matching)
 - [x] Human-readable trace output
 - [x] JSON output for LLM consumption
-- [x] Custom error decoding (e.g., `MaxSupplyExceeded`)
+- [x] Custom error decoding (e.g., `MaxSupplyExceeded`, `OwnableUnauthorizedAccount`)
 - [x] Tested against Anvil and Sepolia
+- [x] Progress reporting for preceding transaction replay
+- [x] Quick mode (`--quick`) to skip preceding tx replay
 
-### Phase 2: Etherscan + source mapping
+### Phase 2: Proxy support + Etherscan
 
-- [ ] Etherscan/Sourcify source fetching (when no local project)
+- [x] ABI selector-based fallback identification for proxy contracts
+- [x] UUPS/transparent proxy resolution (tested with complex multi-proxy transaction)
+- [x] Etherscan/Sourcify source fetching for external contracts
+- [x] Auto-detection of chain from RPC (no `--chain` needed)
 - [ ] Source location mapping (file:line:column in trace output)
-- [ ] Proxy contract handling (DELEGATECALL source resolution)
-- [ ] Graceful degradation for unverified contracts
+- [ ] Graceful degradation for unverified contracts (show selector + raw args)
 
 ### Phase 3: Interactive TUI debugger
 
