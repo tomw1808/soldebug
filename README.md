@@ -74,7 +74,7 @@ soldebug replays the exact transaction execution using [revm](https://github.com
 ### Quick install (recommended)
 
 ```bash
-curl -L https://raw.githubusercontent.com/USER/soldebug/main/soldebugup/install | bash
+curl -L https://raw.githubusercontent.com/tomw1808/soldebug/main/soldebugup/install | bash
 ```
 
 This downloads the latest prebuilt binary for your platform and installs it to `~/.soldebug/bin/`. Supports macOS (Apple Silicon & Intel) and Linux (x86_64 & ARM64).
@@ -82,14 +82,12 @@ This downloads the latest prebuilt binary for your platform and installs it to `
 To install a specific version:
 
 ```bash
-SOLDEBUG_VERSION=v0.1.0 curl -L https://raw.githubusercontent.com/USER/soldebug/main/soldebugup/install | bash
+SOLDEBUG_VERSION=v0.1.0 curl -L https://raw.githubusercontent.com/tomw1808/soldebug/main/soldebugup/install | bash
 ```
-
-> **Note:** Replace `USER` with the actual GitHub username/org once the repo is published.
 
 ### Download binary manually
 
-Grab a prebuilt binary from the [Releases](https://github.com/USER/soldebug/releases) page:
+Grab a prebuilt binary from the [Releases](https://github.com/tomw1808/soldebug/releases) page:
 
 | Platform | Archive |
 |----------|---------|

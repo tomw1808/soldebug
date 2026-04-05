@@ -4,13 +4,13 @@ set -euo pipefail
 # soldebugup - installer for soldebug
 #
 # Usage:
-#   curl -L https://raw.githubusercontent.com/USER/soldebug/main/soldebugup/install | bash
+#   curl -L https://raw.githubusercontent.com/tomw1808/soldebug/main/soldebugup/install | bash
 #
 # Environment variables:
 #   SOLDEBUG_VERSION  - specific version to install (e.g., v0.1.0). Default: latest
 #   SOLDEBUG_DIR      - installation directory. Default: ~/.soldebug
 
-REPO="USER/soldebug"  # TODO: replace with actual GitHub repo
+REPO="tomw1808/soldebug"  # TODO: replace with actual GitHub repo
 
 main() {
     need_cmd curl
