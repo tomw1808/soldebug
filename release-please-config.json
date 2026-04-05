@@ -1,0 +1,24 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "rust",
+      "component": "soldebug",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug Fixes" },
+        { "type": "perf", "section": "Performance" },
+        { "type": "docs", "section": "Documentation" },
+        { "type": "ci", "section": "CI", "hidden": true },
+        { "type": "chore", "section": "Miscellaneous", "hidden": true }
+      ],
+      "extra-files": [
+        "crates/soldebug/Cargo.toml",
+        "crates/soldebug-core/Cargo.toml",
+        "crates/soldebug-output/Cargo.toml"
+      ]
+    }
+  },
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+}

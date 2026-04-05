@@ -1,19 +1,31 @@
-name: Release
+name: Release Please
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
 
 permissions:
   contents: write
-
-env:
-  CARGO_TERM_COLOR: always
+  pull-requests: write
 
 jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: rust
+          manifest-file: .release-please-manifest.json
+          config-file: release-please-config.json
+
   build:
     name: Build ${{ matrix.target }}
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -21,17 +33,13 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            archive: tar.gz
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            archive: tar.gz
             cross: true
           - target: x86_64-apple-darwin
             os: macos-13
-            archive: tar.gz
           - target: aarch64-apple-darwin
             os: macos-14
-            archive: tar.gz
 
     steps:
       - name: Checkout
@@ -59,31 +67,12 @@ jobs:
       - name: Package binary
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../soldebug-${{ github.ref_name }}-${{ matrix.target }}.tar.gz soldebug
+          tar czf ../../../soldebug-${{ needs.release-please.outputs.tag_name }}-${{ matrix.target }}.tar.gz soldebug
           cd ../../..
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: soldebug-${{ matrix.target }}
-          path: soldebug-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
-
-  release:
-    name: Create Release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v5
-        with:
-          path: artifacts
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: false
-          generate_release_notes: true
-          files: artifacts/**/*.tar.gz
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ needs.release-please.outputs.tag_name }} \
+            soldebug-${{ needs.release-please.outputs.tag_name }}-${{ matrix.target }}.tar.gz
