@@ -1,7 +1,7 @@
 {
   "packages": {
     ".": {
-      "release-type": "rust",
+      "release-type": "simple",
       "component": "soldebug",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
@@ -14,9 +14,21 @@
         { "type": "chore", "section": "Miscellaneous", "hidden": true }
       ],
       "extra-files": [
-        "crates/soldebug/Cargo.toml",
-        "crates/soldebug-core/Cargo.toml",
-        "crates/soldebug-output/Cargo.toml"
+        {
+          "type": "toml",
+          "path": "crates/soldebug/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "crates/soldebug-core/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "crates/soldebug-output/Cargo.toml",
+          "jsonpath": "$.package.version"
+        }
       ]
     }
   },
