@@ -6,8 +6,8 @@
 
 use eyre::{Result, WrapErr};
 use foundry_common::ContractsByArtifact;
+use foundry_compilers::ArtifactId;
 use foundry_compilers::artifacts::ConfigurableContractArtifact;
-use foundry_compilers::{ArtifactId, ProjectCompileOutput};
 use foundry_config::Config;
 use foundry_evm_traces::debug::ContractSources;
 use std::path::Path;
@@ -47,7 +47,9 @@ pub fn resolve_local_sources(project_dir: Option<&Path>) -> Result<Option<Resolv
 
     info!(root = %config.root.display(), "Compiling local Foundry project");
 
-    let project = config.project().wrap_err("Failed to create project from config")?;
+    let project = config
+        .project()
+        .wrap_err("Failed to create project from config")?;
 
     // Compile the project (or use cached output)
     let output = project.compile()?;
@@ -62,9 +64,8 @@ pub fn resolve_local_sources(project_dir: Option<&Path>) -> Result<Option<Resolv
                 .artifact_ids()
                 .map(|(id, artifact)| (id, artifact.clone().into())),
         );
-        let sources =
-            ContractSources::from_project_output(&output, project.root(), None)
-                .wrap_err("Failed to build contract sources from compiler output")?;
+        let sources = ContractSources::from_project_output(&output, project.root(), None)
+            .wrap_err("Failed to build contract sources from compiler output")?;
         (known, sources)
     } else {
         // Compilation was fully cached - read artifacts directly from out/ directory
@@ -88,7 +89,7 @@ pub fn resolve_local_sources(project_dir: Option<&Path>) -> Result<Option<Resolv
 /// When `project.compile()` returns nothing because everything is cached,
 /// we walk the `out/` directory and parse the artifact JSON files directly.
 fn read_cached_artifacts(
-    config: &Config,
+    _config: &Config,
     project: &foundry_compilers::Project,
 ) -> Result<(ContractsByArtifact, ContractSources)> {
     let artifacts_dir = &project.paths.artifacts;
@@ -149,7 +150,11 @@ fn read_cached_artifacts(
         artifacts.push((id, artifact));
     }
 
-    eprintln!("  Read {} cached artifacts from {}", artifacts.len(), artifacts_dir.display());
+    eprintln!(
+        "  Read {} cached artifacts from {}",
+        artifacts.len(),
+        artifacts_dir.display()
+    );
 
     let known_contracts = ContractsByArtifact::new(
         artifacts

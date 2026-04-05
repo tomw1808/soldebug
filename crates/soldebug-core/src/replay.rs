@@ -67,15 +67,19 @@ pub async fn replay_transaction(
     info!(block = tx_block_number, "Fetched transaction");
 
     // Configure fork at parent block
-    let mut config = Config::default();
-    config.eth_rpc_url = Some(rpc_url.to_string());
-    config.fork_block_number = Some(tx_block_number - 1);
+    let mut config = Config {
+        eth_rpc_url: Some(rpc_url.to_string()),
+        fork_block_number: Some(tx_block_number - 1),
+        ..Default::default()
+    };
 
-    let mut evm_opts = EvmOpts::default();
-    evm_opts.fork_url = Some(rpc_url.to_string());
-    evm_opts.fork_block_number = Some(tx_block_number - 1);
-    // Set a generous memory limit (2^32 bytes = 4GB) to avoid MemoryLimitOOG
-    evm_opts.memory_limit = 1 << 32;
+    let evm_opts = EvmOpts {
+        fork_url: Some(rpc_url.to_string()),
+        fork_block_number: Some(tx_block_number - 1),
+        // Set a generous memory limit (2^32 bytes = 4GB) to avoid MemoryLimitOOG
+        memory_limit: 1 << 32,
+        ..Default::default()
+    };
 
     // Get fork material (env, tx_env, fork, chain, networks)
     let (mut evm_env, tx_env, fork, chain, networks) =
@@ -123,69 +127,65 @@ pub async fn replay_transaction(
     evm_env.cfg_env.set_spec(executor.spec_id());
 
     // Replay preceding transactions in the block
-    if !quick {
-        if let Some(ref block) = block {
-            let BlockTransactions::Full(ref txs) = block.transactions else {
-                eyre::bail!("Block transactions not available in full format");
-            };
+    if !quick && let Some(ref block) = block {
+        let BlockTransactions::Full(ref txs) = block.transactions else {
+            eyre::bail!("Block transactions not available in full format");
+        };
 
-            // Find position of our tx in the block
-            let tx_position = txs
-                .iter()
-                .position(|t| t.tx_hash() == tx_hash)
-                .unwrap_or(txs.len());
+        // Find position of our tx in the block
+        let tx_position = txs
+            .iter()
+            .position(|t| t.tx_hash() == tx_hash)
+            .unwrap_or(txs.len());
 
-            if tx_position > 0 {
+        if tx_position > 0 {
+            eprintln!(
+                "  Replaying {tx_position} preceding transactions in block {} (fetching state from RPC)...",
+                evm_env.block_env.number
+            );
+            if tx_position > 50 {
                 eprintln!(
-                    "  Replaying {tx_position} preceding transactions in block {} (fetching state from RPC)...",
-                    evm_env.block_env.number
+                    "  Hint: use --quick to skip this step (faster, but may produce slightly different results)"
                 );
-                if tx_position > 50 {
-                    eprintln!(
-                        "  Hint: use --quick to skip this step (faster, but may produce slightly different results)"
-                    );
-                }
+            }
+        }
+
+        for (idx, tx_in_block) in txs.iter().enumerate() {
+            if tx_in_block.tx_hash() == tx_hash {
+                break;
             }
 
-            for (idx, tx_in_block) in txs.iter().enumerate() {
-                if tx_in_block.tx_hash() == tx_hash {
-                    break;
-                }
+            if tx_position > 10 && (idx + 1) % 10 == 0 {
+                eprintln!("  [{}/{}] replaying...", idx + 1, tx_position);
+            }
 
-                if tx_position > 10 && (idx + 1) % 10 == 0 {
-                    eprintln!("  [{}/{}] replaying...", idx + 1, tx_position);
-                }
+            let tx_env = tx_in_block
+                .as_envelope()
+                .map_or(Default::default(), |envelope| {
+                    TxEnv::from_recovered_tx(envelope, tx_in_block.from())
+                });
 
-                let tx_env = tx_in_block
-                    .as_envelope()
-                    .map_or(Default::default(), |envelope| {
-                        TxEnv::from_recovered_tx(envelope, tx_in_block.from())
-                    });
+            let mut env = evm_env.clone();
+            env.cfg_env.disable_balance_check = true;
 
-                let mut env = evm_env.clone();
-                env.cfg_env.disable_balance_check = true;
-
-                if Transaction::to(tx_in_block).is_some() {
-                    trace!(tx = ?tx_in_block.tx_hash(), "Replaying call transaction");
-                    let _ = executor.transact_with_env(env, tx_env);
-                } else {
-                    trace!(tx = ?tx_in_block.tx_hash(), "Replaying create transaction");
-                    match executor.deploy_with_env(env, tx_env, None) {
-                        Err(EvmError::Execution(_)) => (), // Reverted txs are fine
-                        Err(e) => return Err(e.into()),
-                        Ok(_) => (),
-                    }
+            if Transaction::to(tx_in_block).is_some() {
+                trace!(tx = ?tx_in_block.tx_hash(), "Replaying call transaction");
+                let _ = executor.transact_with_env(env, tx_env);
+            } else {
+                trace!(tx = ?tx_in_block.tx_hash(), "Replaying create transaction");
+                match executor.deploy_with_env(env, tx_env, None) {
+                    Err(EvmError::Execution(_)) => (), // Reverted txs are fine
+                    Err(e) => return Err(e.into()),
+                    Ok(_) => (),
                 }
             }
         }
     }
 
     // Execute the target transaction
-    let result_tx_env = tx
-        .as_envelope()
-        .map_or(Default::default(), |envelope| {
-            TxEnv::from_recovered_tx(envelope, tx.from())
-        });
+    let result_tx_env = tx.as_envelope().map_or(Default::default(), |envelope| {
+        TxEnv::from_recovered_tx(envelope, tx.from())
+    });
 
     let raw_result = if Transaction::to(&tx).is_some() {
         info!("Executing target call transaction");
@@ -200,14 +200,14 @@ pub async fn replay_transaction(
     if let Some(ref traces) = raw_result.traces {
         for node in traces.arena.nodes() {
             for addr in [node.trace.address, node.trace.caller] {
-                if !addr.is_zero() && !contracts_bytecode.contains_key(&addr) {
-                    if let Ok(Some(info)) = executor.backend().basic_ref(addr) {
-                        if let Some(code) = info.code {
-                            let bytes = code.bytes();
-                            if !bytes.is_empty() {
-                                contracts_bytecode.insert(addr, bytes);
-                            }
-                        }
+                if !addr.is_zero()
+                    && !contracts_bytecode.contains_key(&addr)
+                    && let Ok(Some(info)) = executor.backend().basic_ref(addr)
+                    && let Some(code) = info.code
+                {
+                    let bytes = code.bytes();
+                    if !bytes.is_empty() {
+                        contracts_bytecode.insert(addr, bytes);
                     }
                 }
             }

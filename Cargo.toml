@@ -22,6 +22,8 @@ exclude = ["benches/", "tests/", "test-data/", "testdata/"]
 [workspace.lints.clippy]
 dbg_macro = "warn"
 uninlined_format_args = "warn"
+# Allow result_large_err - inherited by Foundry path-dep crates which trigger this
+result_large_err = "allow"
 
 [workspace.lints.rust]
 rust_2018_idioms = { level = "deny", priority = -1 }

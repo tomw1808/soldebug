@@ -42,13 +42,8 @@ async fn run(cli: Cli) -> Result<()> {
 
     // Step 2: Replay the transaction
     eprintln!("Replaying transaction {}...", cli.tx_hash);
-    let replay = soldebug_core::replay::replay_transaction(
-        &rpc_url,
-        tx_hash,
-        cli.quick,
-        debug_mode,
-    )
-    .await?;
+    let replay =
+        soldebug_core::replay::replay_transaction(&rpc_url, tx_hash, cli.quick, debug_mode).await?;
 
     let traces = match replay.traces {
         Some(t) => t,
@@ -60,7 +55,9 @@ async fn run(cli: Cli) -> Result<()> {
 
     // Step 3: Decode traces into structured data
     eprintln!("Decoding traces...");
-    let mut config = foundry_config::Config::load().unwrap_or_default().sanitized();
+    let mut config = foundry_config::Config::load()
+        .unwrap_or_default()
+        .sanitized();
 
     // Set Etherscan API key if provided
     if let Some(ref key) = cli.etherscan_key {

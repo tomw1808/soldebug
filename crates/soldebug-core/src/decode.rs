@@ -6,13 +6,13 @@ use alloy_primitives::{Address, B256, Bytes, map::HashMap};
 use eyre::Result;
 use foundry_common::ContractsByArtifact;
 use foundry_evm_traces::{
-    CallTraceDecoderBuilder, CallTraceNode, DebugTraceIdentifier, Traces,
-    debug::ContractSources,
+    CallTraceDecoderBuilder, CallTraceNode, DebugTraceIdentifier, Traces, debug::ContractSources,
     identifier::TraceIdentifiers,
 };
 use tracing::info;
 
 /// Decode traces into a structured `DebugSession`.
+#[allow(clippy::too_many_arguments)]
 pub async fn decode_traces(
     tx_hash: B256,
     success: bool,
@@ -52,7 +52,9 @@ pub async fn decode_traces(
     if let Some(ref contracts) = known_contracts {
         let unidentified_count = identify_by_abi_selectors(&mut decoder, &traces, contracts);
         if unidentified_count > 0 {
-            eprintln!("  ABI selector matching identified {unidentified_count} additional contracts");
+            eprintln!(
+                "  ABI selector matching identified {unidentified_count} additional contracts"
+            );
         }
     }
 
@@ -164,9 +166,7 @@ fn identify_by_abi_selectors(
 
                 if let Some((name, abi)) = best {
                     // Register with the decoder
-                    decoder
-                        .contracts
-                        .insert(addr, format!("{name}"));
+                    decoder.contracts.insert(addr, name.to_string());
                     decoder.labels.insert(addr, name.clone());
 
                     // Register all functions and events from this ABI
@@ -194,7 +194,10 @@ fn identify_by_abi_selectors(
 fn find_best_abi_match<'a>(
     addr: Address,
     traces: &Traces,
-    _selector_to_contracts: &HashMap<alloy_primitives::FixedBytes<4>, Vec<(String, &'a alloy_json_abi::JsonAbi)>>,
+    _selector_to_contracts: &HashMap<
+        alloy_primitives::FixedBytes<4>,
+        Vec<(String, &'a alloy_json_abi::JsonAbi)>,
+    >,
     candidates: &[(String, &'a alloy_json_abi::JsonAbi)],
 ) -> Option<(String, &'a alloy_json_abi::JsonAbi)> {
     if candidates.len() == 1 {
@@ -208,8 +211,7 @@ fn find_best_abi_match<'a>(
     for (_, trace) in traces {
         for node in trace.arena.nodes() {
             if node.trace.address == addr && node.trace.data.len() >= 4 {
-                let sel: alloy_primitives::FixedBytes<4> =
-                    node.trace.data[..4].try_into().unwrap();
+                let sel: alloy_primitives::FixedBytes<4> = node.trace.data[..4].try_into().unwrap();
                 selectors_at_addr.insert(sel);
             }
         }
@@ -248,11 +250,7 @@ fn build_stack_frames(traces: &Traces) -> Vec<StackFrame> {
 }
 
 /// Convert a `CallTraceNode` into a `StackFrame`, recursively processing children.
-fn node_to_frame(
-    node: &CallTraceNode,
-    all_nodes: &[CallTraceNode],
-    depth: usize,
-) -> StackFrame {
+fn node_to_frame(node: &CallTraceNode, all_nodes: &[CallTraceNode], depth: usize) -> StackFrame {
     let trace = &node.trace;
 
     // Extract decoded info (label, function signature, return data)
@@ -291,9 +289,9 @@ fn node_to_frame(
         .children
         .iter()
         .filter_map(|&child_idx| {
-            all_nodes.get(child_idx).map(|child_node| {
-                node_to_frame(child_node, all_nodes, depth + 1)
-            })
+            all_nodes
+                .get(child_idx)
+                .map(|child_node| node_to_frame(child_node, all_nodes, depth + 1))
         })
         .collect();
 
@@ -304,7 +302,10 @@ fn node_to_frame(
         if let Some(ref decoded) = trace.decoded {
             decoded.return_data.clone()
         } else if !trace.output.is_empty() {
-            Some(format!("0x{}", alloy_primitives::hex::encode(&trace.output)))
+            Some(format!(
+                "0x{}",
+                alloy_primitives::hex::encode(&trace.output)
+            ))
         } else {
             None
         }

@@ -57,7 +57,11 @@ pub fn format_trace(session: &DebugSession) -> String {
 pub fn format_trace_plain(session: &DebugSession) -> String {
     let mut out = String::new();
 
-    let status = if session.success { "SUCCESS" } else { "REVERTED" };
+    let status = if session.success {
+        "SUCCESS"
+    } else {
+        "REVERTED"
+    };
     let tx_short = format!(
         "0x{}...{}",
         &format!("{:x}", session.tx_hash)[..6],
@@ -100,10 +104,7 @@ fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: boo
 
     // Contract.function(args)
     let addr_str = format_address(frame.address);
-    let contract = frame
-        .contract_name
-        .as_deref()
-        .unwrap_or(&addr_str);
+    let contract = frame.contract_name.as_deref().unwrap_or(&addr_str);
 
     let call_kind_prefix = match frame.kind {
         FrameKind::DelegateCall => "[delegatecall] ",
@@ -112,10 +113,7 @@ fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: boo
         FrameKind::Call => "",
     };
 
-    let func = frame
-        .function_name
-        .as_deref()
-        .unwrap_or("???");
+    let func = frame.function_name.as_deref().unwrap_or("???");
 
     let args = if frame.function_args.is_empty() {
         String::new()
@@ -134,13 +132,8 @@ fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: boo
             .join(", ")
     };
 
-    let status_marker = if frame.success {
-        ""
-    } else if frame.children.iter().any(|c| !c.success) {
-        "" // failure is in a child, don't mark this frame
-    } else {
-        " <- REVERT"
-    };
+    let is_failing_leaf = !frame.success && frame.children.iter().all(|c| c.success);
+    let status_marker = if is_failing_leaf { " <- REVERT" } else { "" };
 
     // Write the call line
     writeln!(
@@ -165,17 +158,15 @@ fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: boo
     }
 
     // Revert reason on the failing leaf
-    if !frame.success && frame.children.iter().all(|c| c.success) {
-        if let Some(ref reason) = frame.revert_reason {
-            writeln!(
-                out,
-                "{}    {} {}",
-                "  ".repeat(indent),
-                "REVERT:".red().bold(),
-                reason
-            )
-            .unwrap();
-        }
+    if is_failing_leaf && let Some(ref reason) = frame.revert_reason {
+        writeln!(
+            out,
+            "{}    {} {}",
+            "  ".repeat(indent),
+            "REVERT:".red().bold(),
+            reason
+        )
+        .unwrap();
     }
 
     // Children
@@ -192,10 +183,7 @@ fn write_frame_plain(out: &mut String, frame: &StackFrame, indent: usize, is_roo
     };
 
     let addr_str = format_address(frame.address);
-    let contract = frame
-        .contract_name
-        .as_deref()
-        .unwrap_or(&addr_str);
+    let contract = frame.contract_name.as_deref().unwrap_or(&addr_str);
 
     let call_kind_prefix = match frame.kind {
         FrameKind::DelegateCall => "[delegatecall] ",
@@ -222,15 +210,14 @@ fn write_frame_plain(out: &mut String, frame: &StackFrame, indent: usize, is_roo
             .join(", ")
     };
 
-    let status_marker = if frame.success {
-        ""
-    } else if frame.children.iter().any(|c| !c.success) {
-        ""
-    } else {
-        " <- REVERT"
-    };
+    let is_failing_leaf = !frame.success && frame.children.iter().all(|c| c.success);
+    let status_marker = if is_failing_leaf { " <- REVERT" } else { "" };
 
-    writeln!(out, "{prefix}{call_kind_prefix}{contract}.{func}({args}){status_marker}").unwrap();
+    writeln!(
+        out,
+        "{prefix}{call_kind_prefix}{contract}.{func}({args}){status_marker}"
+    )
+    .unwrap();
 
     if let Some(ref loc) = frame.source_location {
         writeln!(
@@ -244,10 +231,8 @@ fn write_frame_plain(out: &mut String, frame: &StackFrame, indent: usize, is_roo
         .unwrap();
     }
 
-    if !frame.success && frame.children.iter().all(|c| c.success) {
-        if let Some(ref reason) = frame.revert_reason {
-            writeln!(out, "{}    REVERT: {reason}", "  ".repeat(indent)).unwrap();
-        }
+    if is_failing_leaf && let Some(ref reason) = frame.revert_reason {
+        writeln!(out, "{}    REVERT: {reason}", "  ".repeat(indent)).unwrap();
     }
 
     for child in &frame.children {
