@@ -10,7 +10,15 @@ set -euo pipefail
 #   SOLDEBUG_VERSION  - specific version to install (e.g., v0.1.0). Default: latest
 #   SOLDEBUG_DIR      - installation directory. Default: ~/.soldebug
 
-REPO="tomw1808/soldebug"  # TODO: replace with actual GitHub repo
+REPO="tomw1808/soldebug"
+TMP_DIR=""
+
+cleanup() {
+    if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
+        rm -rf "$TMP_DIR"
+    fi
+}
+trap cleanup EXIT
 
 main() {
     need_cmd curl
@@ -50,27 +58,29 @@ main() {
         fi
     fi
 
-    say "Installing soldebug ${version} (${target})..."
+    # The tag may include a component prefix (e.g., "soldebug-v0.1.1") or be plain (e.g., "v0.2.0").
+    local tag="$version"
+    local display_version="${version#soldebug-}"
 
-    # Download
-    local url="https://github.com/${REPO}/releases/download/${version}/soldebug-${version}-${target}.tar.gz"
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
-    trap 'rm -rf "$tmp_dir"' EXIT
+    say "Installing soldebug ${display_version} (${target})..."
+
+    # Download - try the asset name matching the tag format
+    local url="https://github.com/${REPO}/releases/download/${tag}/soldebug-${tag}-${target}.tar.gz"
+    TMP_DIR=$(mktemp -d)
 
     say "Downloading from ${url}..."
-    curl -fSL "$url" -o "$tmp_dir/soldebug.tar.gz" || err "Download failed. Check that version ${version} exists for ${target}."
+    curl -fSL "$url" -o "$TMP_DIR/soldebug.tar.gz" || err "Download failed. Check that version ${version} exists for ${target}."
 
     # Extract
-    tar xzf "$tmp_dir/soldebug.tar.gz" -C "$tmp_dir"
+    tar xzf "$TMP_DIR/soldebug.tar.gz" -C "$TMP_DIR"
 
     # Install
     mkdir -p "$bin_dir"
-    mv "$tmp_dir/soldebug" "$bin_dir/soldebug"
+    mv "$TMP_DIR/soldebug" "$bin_dir/soldebug"
     chmod +x "$bin_dir/soldebug"
 
     say ""
-    say "soldebug ${version} installed to ${bin_dir}/soldebug"
+    say "soldebug ${display_version} installed to ${bin_dir}/soldebug"
     say ""
 
     # Check PATH
