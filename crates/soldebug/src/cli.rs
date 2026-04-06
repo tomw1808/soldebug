@@ -52,7 +52,7 @@ pub struct Cli {
     #[arg(long)]
     pub chain: Option<String>,
 
-    /// Show verbose output (opcodes, gas per call).
+    /// Increase output verbosity (-v: addresses+gas, -vv: selectors+full addresses).
     #[arg(long, short = 'v', action = clap::ArgAction::Count)]
     pub verbose: u8,
 }

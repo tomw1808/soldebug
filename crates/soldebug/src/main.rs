@@ -79,7 +79,7 @@ async fn run(cli: Cli) -> Result<()> {
     // Step 4: Output
     match cli.output {
         OutputFormat::Trace => {
-            let output = soldebug_output::trace_fmt::format_trace(&session);
+            let output = soldebug_output::trace_fmt::format_trace(&session, cli.verbose);
             print!("{output}");
         }
         OutputFormat::Json => {
@@ -88,7 +88,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         OutputFormat::Interactive => {
             eprintln!("Interactive TUI mode is not yet implemented. Use --output trace for now.");
-            let output = soldebug_output::trace_fmt::format_trace(&session);
+            let output = soldebug_output::trace_fmt::format_trace(&session, cli.verbose);
             print!("{output}");
         }
     }

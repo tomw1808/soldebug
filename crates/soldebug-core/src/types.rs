@@ -30,6 +30,9 @@ pub struct StackFrame {
     pub contract_name: Option<String>,
     /// Function name (e.g., "transferFrom").
     pub function_name: Option<String>,
+    /// Raw 4-byte function selector (e.g., "0x70a08231").
+    /// Present when calldata >= 4 bytes, regardless of whether decoding succeeded.
+    pub selector: Option<String>,
     /// Decoded function arguments as (name, value) pairs.
     pub function_args: Vec<(String, String)>,
     /// Return value (decoded).

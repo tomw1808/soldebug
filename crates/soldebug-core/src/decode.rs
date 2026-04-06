@@ -253,6 +253,16 @@ fn build_stack_frames(traces: &Traces) -> Vec<StackFrame> {
 fn node_to_frame(node: &CallTraceNode, all_nodes: &[CallTraceNode], depth: usize) -> StackFrame {
     let trace = &node.trace;
 
+    // Extract raw 4-byte selector from calldata (if present)
+    let selector = if trace.data.len() >= 4 {
+        Some(format!(
+            "0x{}",
+            alloy_primitives::hex::encode(&trace.data[..4])
+        ))
+    } else {
+        None
+    };
+
     // Extract decoded info (label, function signature, return data)
     let (contract_name, function_name, function_args, return_value) =
         if let Some(ref decoded) = trace.decoded {
@@ -315,6 +325,7 @@ fn node_to_frame(node: &CallTraceNode, all_nodes: &[CallTraceNode], depth: usize
         address: trace.address,
         contract_name,
         function_name,
+        selector,
         function_args,
         return_value: if trace.success { return_value } else { None },
         source_location: None, // TODO: populate from PcSourceMapper

@@ -8,7 +8,13 @@ use std::fmt::Write;
 use yansi::Paint;
 
 /// Format a `DebugSession` as a human-readable stack trace.
-pub fn format_trace(session: &DebugSession) -> String {
+///
+/// Verbosity levels:
+/// - 0: default (selectors for unknown functions, no addresses on resolved contracts)
+/// - 1: addresses on resolved contracts, gas per call, return values
+/// - 2: full addresses, selectors on decoded functions
+/// - 3+: reserved for future (opcodes, raw data)
+pub fn format_trace(session: &DebugSession, verbosity: u8) -> String {
     let mut out = String::new();
 
     // Header
@@ -40,7 +46,7 @@ pub fn format_trace(session: &DebugSession) -> String {
     } else {
         writeln!(out, "{}", "Call Stack:".bold()).unwrap();
         for frame in &session.call_stack {
-            write_frame(&mut out, frame, 1, true);
+            write_frame(&mut out, frame, 1, true, verbosity);
         }
     }
 
@@ -54,7 +60,7 @@ pub fn format_trace(session: &DebugSession) -> String {
 }
 
 /// Format a `DebugSession` as plain text (no ANSI colors).
-pub fn format_trace_plain(session: &DebugSession) -> String {
+pub fn format_trace_plain(session: &DebugSession, verbosity: u8) -> String {
     let mut out = String::new();
 
     let status = if session.success {
@@ -83,7 +89,7 @@ pub fn format_trace_plain(session: &DebugSession) -> String {
     } else {
         writeln!(out, "Call Stack:").unwrap();
         for frame in &session.call_stack {
-            write_frame_plain(&mut out, frame, 1, true);
+            write_frame_plain(&mut out, frame, 1, true, verbosity);
         }
     }
 
@@ -95,16 +101,23 @@ pub fn format_trace_plain(session: &DebugSession) -> String {
     out
 }
 
-fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: bool) {
+fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: bool, verbosity: u8) {
     let prefix = if is_root {
         "  ".repeat(indent)
     } else {
         format!("{}+-- ", "  ".repeat(indent - 1))
     };
 
-    // Contract.function(args)
-    let addr_str = format_address(frame.address);
-    let contract = frame.contract_name.as_deref().unwrap_or(&addr_str);
+    // Contract display: verbosity-dependent
+    let addr_short = format_address(frame.address);
+    let addr_full = format!("{:?}", frame.address);
+    let contract = match (frame.contract_name.as_deref(), verbosity) {
+        (Some(name), 0) => name.to_string(),
+        (Some(name), 1) => format!("{name}({addr_short})"),
+        (Some(name), _) => format!("{name}({addr_full})"),
+        (None, v) if v >= 2 => addr_full,
+        (None, _) => addr_short,
+    };
 
     let call_kind_prefix = match frame.kind {
         FrameKind::DelegateCall => "[delegatecall] ",
@@ -113,7 +126,13 @@ fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: boo
         FrameKind::Call => "",
     };
 
-    let func = frame.function_name.as_deref().unwrap_or("???");
+    // Function display: verbosity-dependent
+    let func = match (frame.function_name.as_deref(), frame.selector.as_deref()) {
+        (Some(name), Some(sel)) if verbosity >= 2 => format!("{name}[{sel}]"),
+        (Some(name), _) => name.to_string(),
+        (None, Some(sel)) => sel.to_string(),
+        (None, None) => "???".to_string(),
+    };
 
     let args = if frame.function_args.is_empty() {
         String::new()
@@ -135,14 +154,29 @@ fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: boo
     let is_failing_leaf = !frame.success && frame.children.iter().all(|c| c.success);
     let status_marker = if is_failing_leaf { " <- REVERT" } else { "" };
 
+    // Gas per call (verbosity >= 1)
+    let gas_suffix = if verbosity >= 1 {
+        format!(" [{}]", format_gas(frame.gas_used))
+    } else {
+        String::new()
+    };
+
     // Write the call line
     writeln!(
         out,
-        "{prefix}{call_kind_prefix}{}.{}({args}){status_marker}",
+        "{prefix}{call_kind_prefix}{}.{}({args}){gas_suffix}{status_marker}",
         contract.cyan(),
         func.yellow(),
     )
     .unwrap();
+
+    // Return value (verbosity >= 1, successful calls with return data)
+    if verbosity >= 1
+        && frame.success
+        && let Some(ref ret) = frame.return_value
+    {
+        writeln!(out, "{}    {} {ret}", "  ".repeat(indent), "->".dim()).unwrap();
+    }
 
     // Source location
     if let Some(ref loc) = frame.source_location {
@@ -171,19 +205,27 @@ fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: boo
 
     // Children
     for child in &frame.children {
-        write_frame(out, child, indent + 1, false);
+        write_frame(out, child, indent + 1, false, verbosity);
     }
 }
 
-fn write_frame_plain(out: &mut String, frame: &StackFrame, indent: usize, is_root: bool) {
+fn write_frame_plain(out: &mut String, frame: &StackFrame, indent: usize, is_root: bool, verbosity: u8) {
     let prefix = if is_root {
         "  ".repeat(indent)
     } else {
         format!("{}+-- ", "  ".repeat(indent - 1))
     };
 
-    let addr_str = format_address(frame.address);
-    let contract = frame.contract_name.as_deref().unwrap_or(&addr_str);
+    // Contract display: verbosity-dependent
+    let addr_short = format_address(frame.address);
+    let addr_full = format!("{:?}", frame.address);
+    let contract = match (frame.contract_name.as_deref(), verbosity) {
+        (Some(name), 0) => name.to_string(),
+        (Some(name), 1) => format!("{name}({addr_short})"),
+        (Some(name), _) => format!("{name}({addr_full})"),
+        (None, v) if v >= 2 => addr_full,
+        (None, _) => addr_short,
+    };
 
     let call_kind_prefix = match frame.kind {
         FrameKind::DelegateCall => "[delegatecall] ",
@@ -192,7 +234,14 @@ fn write_frame_plain(out: &mut String, frame: &StackFrame, indent: usize, is_roo
         FrameKind::Call => "",
     };
 
-    let func = frame.function_name.as_deref().unwrap_or("???");
+    // Function display: verbosity-dependent
+    let func = match (frame.function_name.as_deref(), frame.selector.as_deref()) {
+        (Some(name), Some(sel)) if verbosity >= 2 => format!("{name}[{sel}]"),
+        (Some(name), _) => name.to_string(),
+        (None, Some(sel)) => sel.to_string(),
+        (None, None) => "???".to_string(),
+    };
+
     let args = if frame.function_args.is_empty() {
         String::new()
     } else {
@@ -213,11 +262,26 @@ fn write_frame_plain(out: &mut String, frame: &StackFrame, indent: usize, is_roo
     let is_failing_leaf = !frame.success && frame.children.iter().all(|c| c.success);
     let status_marker = if is_failing_leaf { " <- REVERT" } else { "" };
 
+    // Gas per call (verbosity >= 1)
+    let gas_suffix = if verbosity >= 1 {
+        format!(" [{}]", format_gas(frame.gas_used))
+    } else {
+        String::new()
+    };
+
     writeln!(
         out,
-        "{prefix}{call_kind_prefix}{contract}.{func}({args}){status_marker}"
+        "{prefix}{call_kind_prefix}{contract}.{func}({args}){gas_suffix}{status_marker}"
     )
     .unwrap();
+
+    // Return value (verbosity >= 1, successful calls with return data)
+    if verbosity >= 1
+        && frame.success
+        && let Some(ref ret) = frame.return_value
+    {
+        writeln!(out, "{}    -> {ret}", "  ".repeat(indent)).unwrap();
+    }
 
     if let Some(ref loc) = frame.source_location {
         writeln!(
@@ -236,7 +300,7 @@ fn write_frame_plain(out: &mut String, frame: &StackFrame, indent: usize, is_roo
     }
 
     for child in &frame.children {
-        write_frame_plain(out, child, indent + 1, false);
+        write_frame_plain(out, child, indent + 1, false, verbosity);
     }
 }
 

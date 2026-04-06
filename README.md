@@ -132,7 +132,7 @@ soldebug <TX_HASH> [OPTIONS]
 | `-q, --quick` | Skip replaying preceding txs in the block (faster, less accurate) |
 | `--etherscan-key <KEY>` | Etherscan API key for fetching external contract sources (env: `ETHERSCAN_API_KEY`) |
 | `--chain <CHAIN>` | Chain identifier (auto-detected from RPC) |
-| `-v, --verbose` | Verbose output |
+| `-v, --verbose` | Increase verbosity (`-v` addresses+gas, `-vv` selectors+full addresses) |
 
 ### Examples
 
@@ -161,6 +161,35 @@ soldebug 0xabc123... --rpc-url http://localhost:8545 --project-dir ./my-project 
 
 ```bash
 soldebug 0xabc123... --rpc-url http://localhost:8545 --project-dir ./my-project --output json
+```
+
+### Verbosity levels
+
+soldebug supports Foundry-style verbosity flags (`-v`, `-vv`, `-vvv`):
+
+**Default (no flag)** - clean output, unknown functions show their 4-byte selector:
+
+```
+Call Stack:
+  WETH9.balanceOf(arg0=0x0708...ce1e)
+  +-- 0x0708...ce1e.0x70a08231()
+```
+
+**`-v`** - show contract addresses, gas per call, and return values:
+
+```
+Call Stack:
+  WETH9(0xC02a...6Cc2).balanceOf(arg0=0x0708...ce1e) [42.1K gas]
+      -> 1000000000000000000
+  +-- 0x0708...ce1e.0x70a08231() [12.3K gas]
+```
+
+**`-vv`** - full addresses and selectors on all calls:
+
+```
+Call Stack:
+  WETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2).balanceOf[0x70a08231](arg0=0x0708...ce1e) [42.1K gas]
+      -> 1000000000000000000
 ```
 
 ### Output formats
@@ -265,7 +294,8 @@ The workspace's `[patch.crates-io]` section replicates Foundry's dependency pins
 - [x] Etherscan/Sourcify source fetching for external contracts
 - [x] Auto-detection of chain from RPC (no `--chain` needed)
 - [ ] Source location mapping (file:line:column in trace output)
-- [ ] Graceful degradation for unverified contracts (show selector + raw args)
+- [x] Graceful degradation for unverified contracts (show selector + raw args)
+- [x] Verbosity levels (`-v`, `-vv`) for addresses, gas, return values, selectors
 
 ### Phase 3: Interactive TUI debugger
 
