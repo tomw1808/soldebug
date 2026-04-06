@@ -209,7 +209,13 @@ fn write_frame(out: &mut String, frame: &StackFrame, indent: usize, is_root: boo
     }
 }
 
-fn write_frame_plain(out: &mut String, frame: &StackFrame, indent: usize, is_root: bool, verbosity: u8) {
+fn write_frame_plain(
+    out: &mut String,
+    frame: &StackFrame,
+    indent: usize,
+    is_root: bool,
+    verbosity: u8,
+) {
     let prefix = if is_root {
         "  ".repeat(indent)
     } else {
